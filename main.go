@@ -61,7 +61,7 @@ func getBeerListPNG() ([]byte, string) {
 	}
 	defer resp.Body.Close()
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	re := regexp.MustCompile(`data-href="([^"]+)"`)
+	re := regexp.MustCompile(`property="og:image:secure_url" content="([^"]+)"`)
 	listURL := re.FindSubmatch(bodyBytes)
 	png := string(listURL[1])
 	resp, err = http.Get(png)
