@@ -7,7 +7,7 @@ import (
 	"github.com/oliamb/cutter"
 	"github.com/otiai10/gosseract"
 	"image"
-	"image/png"
+	"image/jpeg"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -53,24 +53,28 @@ type Tap struct {
 	OnSale       bool
 }
 
-func getBeerListPNG() ([]byte, string) {
-	// getBeerListPNG gets the AJ's Draft List PNG as []byte
+func getBeerListJPG() ([]byte, string) {
+	// getBeerListJPG gets the AJ's Draft List JPG as []byte
 	resp, err := http.Get("https://www.ajsbeerwarehouse.com/draft-list/")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer resp.Body.Close()
 	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	re := regexp.MustCompile(`property="og:image:secure_url" content="([^"]+)"`)
-	listURL := re.FindSubmatch(bodyBytes)
-	png := string(listURL[1])
-	resp, err = http.Get(png)
+	re := regexp.MustCompile(`w,\s([^\s]+)\s`)
+	listURL := re.FindAllSubmatch(bodyBytes, -1)
+	jpeg := string(listURL[len(listURL)-1][1])
+	fmt.Println("Found image URL: ", jpeg)
+	resp, err = http.Get(jpeg)
 	currentEtag := resp.Header.Get("etag")
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer resp.Body.Close()
 	bodyBytes, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
 	return bodyBytes, currentEtag
 }
 
@@ -92,14 +96,14 @@ func getImageGrid(image image.Image, xOffset int, yOffset int) ([]int, []int) {
 	for x := xOffset; x < imageWidth; x++ {
 		y := yOffset
 		r, g, b, _ := image.At(x, y).RGBA()
-		if r+g+b == 0 {
+		if r+g+b < 3000 {
 			xArray = append(xArray, x)
 		}
 	}
 	for y := yOffset; y < imageHeight; y++ {
 		x := xOffset
-		r, g, b, _ := image.At(x, y).RGBA()
-		if r+g+b == 0 {
+		r, _, _, _ := image.At(x, y).RGBA()
+		if r < 5000 {
 			yArray = append(yArray, y)
 		}
 	}
@@ -142,7 +146,7 @@ func getTap(tapNumber int, tapArray []Cell, beerImage image.Image) Tap {
 			Options: cutter.Copy,
 		})
 		buff := new(bytes.Buffer)
-		err = png.Encode(buff, croppedImg)
+		err = jpeg.Encode(buff, croppedImg, nil)
 		if err != nil {
 			fmt.Println("failed to create buffer", err)
 		}
@@ -184,14 +188,14 @@ func getTap(tapNumber int, tapArray []Cell, beerImage image.Image) Tap {
 }
 
 func getTapJSON() []byte {
-	beerListPNG, currentEtag := getBeerListPNG()
+	beerListJPG, currentEtag := getBeerListJPG()
 	if currentEtag != etag {
 		etag = currentEtag
-		beerListImage, _, err := image.Decode(bytes.NewReader(beerListPNG))
+		beerListImage, _, err := image.Decode(bytes.NewReader(beerListJPG))
 		if err != nil {
 			log.Fatal(err)
 		}
-		xArray, yArray := getImageGrid(beerListImage, 2, 2)
+		xArray, yArray := getImageGrid(beerListImage, 3, 2)
 		cells := getImageCells(xArray, yArray)
 		if len(cells) > 0 {
 			// drop the header and the footer
